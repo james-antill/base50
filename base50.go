@@ -218,6 +218,17 @@ func Encode(dst, src []byte) []byte {
 	return dst[:idx]
 }
 
+// EncodeToBytes returns the base50 encoding of src
+func EncodeToBytes(src []byte) []byte {
+	dst := make([]byte, EncodeLen(len(src)))
+	return Encode(dst, src)
+}
+
+// EncodeToString returns the base50 encoding of src as a string
+func EncodeToString(src []byte) string {
+	return string(EncodeToBytes(src))
+}
+
 // from50Char converts a base50 character into its value and a success flag.
 // in theory we could index the alphabet, but this should be faster...
 func from50Char(c byte) (uint32, bool) {

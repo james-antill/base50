@@ -106,7 +106,5 @@ func main() {
 		os.Exit(0)
 	}
 
-	encoded := make([]byte, base50.EncodeLen(len(bin)))
-	encoded = base50.Encode(encoded, bin)
-	fmt.Fprintln(fout, string(encoded))
+	fmt.Fprintln(fout, base50.EncodeToString(bin))
 }
