@@ -280,6 +280,7 @@ func skipChar(c byte) bool {
 	case '\n':
 	case '\r':
 	case ' ':
+	case '_': // Allows 0xFFFF_FFFF type stuff.
 		return true
 	}
 
@@ -309,6 +310,7 @@ func DecodeLen(x int) int {
 	switch rem {
 	case 0:
 		break
+
 	case 1:
 		fallthrough
 	case 2:
