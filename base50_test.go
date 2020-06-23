@@ -238,6 +238,38 @@ func testData(t *testing.T, data []tEncData) {
 	testDataPrefix(t, data, "", "")
 }
 
+func testDataPrefixRev(t *testing.T, data []tEncData, prefix, encPrefix string) {
+	t.Helper()
+
+	for i := range data {
+		dec := append([]byte(prefix), data[i].val...)
+		decLen := data[i].encLen + len(prefix)
+		val := encPrefix + data[i].enc
+
+		if decLen > DecodeLen(len(val)) {
+			t.Errorf("bad DecodeLen: %d: %v len=%d\n",
+				i, val, EncodeLen(len(val)))
+		}
+
+		decoded := make([]byte, DecodeLen(len(val)))
+		decoded, err := Decode(decoded, []byte(val))
+		if err != nil {
+			t.Errorf("bad err: %d: %v made %v\n",
+				i, val, err)
+		}
+
+		if string(dec) != string(decoded) {
+			t.Errorf("data not equal: %v: %v\n tst=<%s>\n got <%s>\n",
+				i, val, dec, string(decoded))
+		}
+	}
+}
+
+func testDataRev(t *testing.T, data []tEncData) {
+	t.Helper()
+	testDataPrefixRev(t, data, "", "")
+}
+
 func TestBase50EncAbcdefg(t *testing.T) {
 	data := []tEncData{
 		{[]byte{'a'}, 3, false, "1x."},
@@ -250,6 +282,59 @@ func TestBase50EncAbcdefg(t *testing.T) {
 	}
 	testData(t, data)
 	testDataPrefix(t, data, "abcdefg", "KKuxPEp1gJ")
+}
+
+func TestBase50DecAbcdefg(t *testing.T) {
+	data := []tEncData{
+		{[]byte{'a'}, 1, false, "1x."},
+		{[]byte("ab"), 2, false, "9yb."},
+		{[]byte("abc"), 3, false, "KKuxH."},
+		{[]byte("abcd"), 4, false, "KKuxP4."},
+		{[]byte("abcde"), 5, false, "KKuxP0SW."},
+		{[]byte("abcdef"), 6, false, "KKuxP2JF2."},
+		{[]byte("abcdefg"), 7, false, "KKuxPEp1gJ"},
+	}
+
+	testDataRev(t, data)
+	testDataPrefixRev(t, data, "a", "1x.")
+}
+
+func TestBase50Declen(t *testing.T) {
+	data := []struct {
+		val int
+		tst int
+	}{
+		{0, 0},
+		{1, 1},
+		{2, 1},
+		{3, 2},
+		{4, 3},
+		{5, 3},
+		{6, 4},
+		{7, 5},
+		{8, 5},
+		{9, 6},
+		{10, 7},
+
+		{10 * 2, 7 * 2},
+		{(10 * 2) + 3, (7 * 2) + 2},
+		{10 * 3, 7 * 3},
+		{10 * 4, 7 * 4},
+		{(10 * 4) + 7, (7 * 4) + 5},
+		{10 * 5, 7 * 5},
+		{10 * 6, 7 * 6},
+		{10 * 7, 7 * 7},
+	}
+
+	for i := range data {
+		val := data[i].val
+		tst := data[i].tst
+
+		if tst != DecodeLen(val) {
+			t.Errorf("data not equal: %v: %v\n tst=<%v>\n got <%v>\n",
+				i, val, tst, DecodeLen(val))
+		}
+	}
 }
 
 func TestBase50Edgecases(t *testing.T) {

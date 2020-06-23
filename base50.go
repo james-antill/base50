@@ -272,6 +272,20 @@ func from50Char(c byte) (uint32, bool) {
 	return 0, false
 }
 
+// skipChar returns true for characters we should skip when decoding,
+// mostly whitespace
+func skipChar(c byte) bool {
+	switch c {
+	case '\t':
+	case '\n':
+	case '\r':
+	case ' ':
+		return true
+	}
+
+	return false
+}
+
 // InvalidByteError values describe errors resulting from an invalid byte in a base50 string.
 type InvalidByteError byte
 
@@ -329,81 +343,37 @@ func DecodeLen(x int) int {
 // Decode expects that src contains only base50 characters and that src has even length. If the input is malformed, Decode returns the number of bytes decoded before the error.
 func Decode(dst, src []byte) ([]byte, error) {
 	count := 0
-
 	odst := dst
 
-	for len(src) >= 10 {
+	for len(src) > 0 {
 		var v [10]uint32
 		var ok [10]bool
 
-		if len(src) == 10 && src[9] == '.' { // End marker, so we can concat
-			break
-		}
+		var Tbuf [10]byte
+		nsrc := Tbuf[:0]
+		for i := 0; len(src) > 0 && len(nsrc) < 10; {
+			c := src[0]
+			src = src[1:]
 
-		for i := 0; i < 10; i++ {
-			if v[i], ok[i] = from50Char(src[i]); !ok[i] {
-				return odst[:count], InvalidByteError(v[i])
+			if skipChar(c) {
+				continue
 			}
+			if c == '.' {
+				break
+			}
+
+			nsrc = append(nsrc, c)
+
+			if v[i], ok[i] = from50Char(c); !ok[i] {
+				return odst[:count], InvalidByteError(c)
+			}
+
+			i++
 		}
 
 		var num uint32
-		for i := 0; i < 5; i++ {
-			num *= 50
-			num += v[i]
-		}
-		if num > 0xFFFFFFF {
-			return odst[:count], InvalidTotalError(num)
-		}
 
-		dst[3] = byte(num & 0xF)
-		dst[3] <<= 4 // It's the high 4 bits, stored in the low 4 bits of num.
-		num >>= 4
-		dst[2] = byte(num & 0xFF)
-		num >>= 8
-		dst[1] = byte(num & 0xFF)
-		num >>= 8
-		dst[0] = byte(num)
-
-		num = 0
-		for i := 5; i < 10; i++ {
-			num *= 50
-			num += v[i]
-		}
-		if num > 0xFFFFFFF {
-			return odst[:count], InvalidTotalError(num)
-		}
-
-		dst[6] = byte(num & 0xFF)
-		num >>= 8
-		dst[5] = byte(num & 0xFF)
-		num >>= 8
-		dst[4] = byte(num & 0xFF)
-		num >>= 8
-		// The low four bits from above, which were the high 4 bits in num.
-		dst[3] += byte(num)
-
-		dst = dst[7:]
-		src = src[10:]
-		count += 7
-	}
-
-	if len(src) > 0 {
-		var v [10]uint32
-		var ok [10]bool
-
-		if src[len(src)-1] == '.' { // End marker, so we can concat
-			src = src[:len(src)-1]
-		}
-
-		for i := 0; i < len(src); i++ {
-			if v[i], ok[i] = from50Char(src[i]); !ok[i] {
-				return odst[:count], InvalidByteError(v[i])
-			}
-		}
-
-		var num uint32
-		i := 0
-		for ; i < len(src) && i < 5; i++ {
+		for i := 0; i < len(nsrc) && i < 5; i++ {
 			num *= 50
 			num += v[i]
 		}
@@ -412,20 +382,20 @@ func Decode(dst, src []byte) ([]byte, error) {
 		}
 
 		// See the table on Encode()
-		if len(src) > 5 {
+		if len(nsrc) > 5 {
 			dst[3] = byte(num & 0xF)
 			dst[3] <<= 4 // It's the high 4 bits, stored in the low 4 bits of num.
 			count++
 		}
-		if len(src) > 4 {
+		if len(nsrc) > 4 {
 			num >>= 4
 		}
-		if len(src) > 3 {
+		if len(nsrc) > 3 {
 			dst[2] = byte(num & 0xFF)
 			num >>= 8
 			count++
 		}
-		if len(src) > 2 {
+		if len(nsrc) > 2 {
 			dst[1] = byte(num & 0xFF)
 			num >>= 8
 			count++
@@ -434,8 +404,7 @@ func Decode(dst, src []byte) ([]byte, error) {
 		count++
 
 		num = 0
-		i = 5
-		for ; i < len(src) && i < 10; i++ {
+		for i := 5; i < len(nsrc) && i < 10; i++ {
 			num *= 50
 			num += v[i]
 		}
@@ -443,25 +412,27 @@ func Decode(dst, src []byte) ([]byte, error) {
 			return odst[:count], InvalidTotalError(num)
 		}
 
-		if len(src) > 9 { // ??
+		if len(nsrc) > 9 { // ??
 			dst[6] = byte(num & 0xFF)
 			num >>= 8
 			count++
 		}
-		if len(src) > 8 {
+		if len(nsrc) > 8 {
 			dst[5] = byte(num & 0xFF)
 			num >>= 8
 			count++
 		}
-		if len(src) > 6 {
+		if len(nsrc) > 6 {
 			dst[4] = byte(num & 0xFF)
 			num >>= 8
 			count++
 		}
-		if len(src) > 5 {
+		if len(nsrc) > 5 {
 			// The low four bits from above, which were the high 4 bits in num.
 			dst[3] += byte(num)
 		}
+
+		dst = odst[count:]
 	}
 
 	return odst[:count], nil
