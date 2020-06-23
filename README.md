@@ -14,4 +14,4 @@ If the number of bytes converted isn't evenly divisible by 7 then the final
 base50 number will be shorted. Base50 does output a stop/padding character but
 that is only required for input if you concatenate two streams together.
 
-  * To install: go get github.com/james-antill/cmd/base50/base50
+  * To install: go get github.com/james-antill/base50/cmd/base50
