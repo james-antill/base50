@@ -171,14 +171,14 @@ type tEncData struct {
 	enc       string
 }
 
-func testData(t *testing.T, data []tEncData) {
+func testDataPrefix(t *testing.T, data []tEncData, prefix, encPrefix string) {
 	t.Helper()
 
 	for i := range data {
-		val := data[i].val
-		encLen := data[i].encLen
+		val := append([]byte(prefix), data[i].val...)
+		encLen := data[i].encLen + len(encPrefix)
 		encOptLen := data[i].encOptLen
-		enc := data[i].enc
+		enc := encPrefix + data[i].enc
 
 		if encLen != EncodeLen(len(val)) {
 			bad := true
@@ -233,6 +233,11 @@ func testData(t *testing.T, data []tEncData) {
 	}
 }
 
+func testData(t *testing.T, data []tEncData) {
+	t.Helper()
+	testDataPrefix(t, data, "", "")
+}
+
 func TestBase50EncAbcdefg(t *testing.T) {
 	data := []tEncData{
 		{[]byte{'a'}, 3, false, "1x."},
@@ -244,6 +249,7 @@ func TestBase50EncAbcdefg(t *testing.T) {
 		{[]byte("abcdefg"), 10, false, "KKuxPEp1gJ"},
 	}
 	testData(t, data)
+	testDataPrefix(t, data, "abcdefg", "KKuxPEp1gJ")
 }
 
 func TestBase50Edgecases(t *testing.T) {
