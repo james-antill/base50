@@ -28,6 +28,7 @@ const Alphabet = "0123456789" +
 	"A" + "EFGH" + "JKLMN" + "P" + "RSTU" + "WXYZ" +
 	"ab" + "defgh" + "jk" + "mn" + "pqrstu" + "wxyz"
 
+const configOpt = true
 const panicDebug = true
 
 // See the documentation on Encode(). Roughly 3.5 bin bytes fits into 5 ASCII
@@ -53,7 +54,7 @@ func encodeInt(dst []byte, num uint32, outb int) {
 	}
 }
 
-func encodeBytes1(dst, src []byte, outb int) {
+func encodeBytes1(dst, src []byte, outb int, opt uint32) int {
 	num := uint32(src[0])
 	if outb > 2 {
 		num <<= 8
@@ -67,38 +68,39 @@ func encodeBytes1(dst, src []byte, outb int) {
 		num <<= 4
 		num += ((uint32(src[3]&0xF0) >> 4) & 0x0F)
 	}
+	if configOpt && opt > num {
+		outb--
+	}
 	encodeInt(dst, num, outb)
+
+	return outb
 }
 
 func encodeBytes1Suffix(dst, src []byte) (int, []byte) {
 	switch len(src) {
 	case 1:
-		if src[0] < 50 { // Optimze, Eg. 0 = 0
-			encodeBytes1(dst, src, 1)
-			return 1, src[1:]
-		}
-		encodeBytes1(dst, src, 2)
-		return 2, src[1:]
+		// 50**1. Optimze, Eg. 0 = 0
+		return encodeBytes1(dst, src, 2, 50), src[1:]
 	case 2:
-		encodeBytes1(dst, src, 3)
+		encodeBytes1(dst, src, 3, 0)
 		return 3, src[2:]
 	case 3:
-		if false { // If the number is small enough we could optimize here.
-			encodeBytes1(dst, src, 4)
-			return 4, src[3:]
-		}
+		// When 3 bytes are the suffix, we need to access [3]
 		var t [4]byte
 		nsrc := t[:]
 		copy(nsrc, src)
-		encodeBytes1(dst, nsrc, 5)
-		return 5, src[3:]
+
+		// 50**4=6250000
+		return encodeBytes1(dst, nsrc, 5, 6250000), src[3:]
 	default:
-		encodeBytes1(dst, src, 5)
+		// If we have >= 4 bytes, we know that by what is after this.
+		// So just 5 == 3 bytes, 6 == 4 bytes, etc.
+		encodeBytes1(dst, src, 5, 0)
 		return 5, src[3:]
 	}
 }
 
-func encodeBytes2(dst, src []byte, outb int) {
+func encodeBytes2(dst, src []byte, outb int, opt uint32) int {
 	var num uint32
 	num = uint32(src[0]) & 0x0F
 	if outb > 1 {
@@ -113,7 +115,11 @@ func encodeBytes2(dst, src []byte, outb int) {
 		num <<= 8
 		num += uint32(src[3])
 	}
+	if configOpt && opt > num {
+		outb--
+	}
 	encodeInt(dst, num, outb)
+	return outb
 }
 
 func encodeBytes2Suffix(dst, src []byte) int {
@@ -121,20 +127,28 @@ func encodeBytes2Suffix(dst, src []byte) int {
 	case 0:
 		return 0
 	case 1:
-		encodeBytes2(dst, src, 1)
+		// This is the "fourth" byte, which means it's just the lower 0.5
+		// or 2**4. We have to output it or we can't tell between no byte
+		// and zero.
+		encodeBytes2(dst, src, 1, 0)
 		return 1
 	case 2:
-		if false { // If the number is small enough we could optimize here.
-			encodeBytes2(dst, src, 2)
-			return 2
-		}
-		encodeBytes2(dst, src, 3)
-		return 3
+		// So this is actually 1.5 bytes,
+		// or 2**12=4096
+		//  50**2=  2500
+		//  50**3=125000
+		return encodeBytes2(dst, src, 3, 2500)
 	case 3:
-		encodeBytes2(dst, src, 4)
+		// 2**20=1048576
+		// 50**4=6250000
+		// Note we can't make this 3 output bytes, or we wouldn't know if the
+		// output should be 5 or 6 bytes.
+		encodeBytes2(dst, src, 4, 0)
 		return 4
 	default:
-		encodeBytes2(dst, src, 5)
+		// 2**28
+		// Dito. have to encode to 5 bytes so we know we encoded 7 bytes.
+		encodeBytes2(dst, src, 5, 0)
 		return 5
 	}
 }
@@ -152,11 +166,11 @@ func EncodeLen(x int) int {
 	case 2:
 		return whole + 3 + 1
 	case 3:
-		return whole + 5 + 1
+		return whole + 5 + 1 // Could be -1
 	case 4:
 		return whole + 6 + 1
 	case 5:
-		return whole + 8 + 1
+		return whole + 8 + 1 // Could be -1
 	case 6:
 		return whole + 9 + 1
 
@@ -198,10 +212,10 @@ func Encode(dst, src []byte) []byte {
 
 	// Get 2x 3.5 bytes at once, just to make life easier...
 	for len(src) >= 7 {
-		encodeBytes1(dst[idx:], src, 5)
+		_ = encodeBytes1(dst[idx:], src, 5, 0)
 		src = src[3:]
 		idx += 5
-		encodeBytes2(dst[idx:], src, 5)
+		_ = encodeBytes2(dst[idx:], src, 5, 0)
 		src = src[4:]
 		idx += 5
 	}
@@ -312,19 +326,19 @@ func DecodeLen(x int) int {
 		break
 
 	case 1:
-		fallthrough
+		fallthrough // Again, or -1
 	case 2:
 		return whole + 1
 	case 3:
 		return whole + 2
 	case 4:
-		fallthrough
+		fallthrough // Again. or -1
 	case 5:
 		return whole + 3
 	case 6:
 		return whole + 4
 	case 7:
-		fallthrough
+		fallthrough // Again, or -1
 	case 8:
 		return whole + 5
 	case 9:
@@ -389,10 +403,8 @@ func Decode(dst, src []byte) ([]byte, error) {
 			dst[3] <<= 4 // It's the high 4 bits, stored in the low 4 bits of num.
 			count++
 		}
-		if len(nsrc) > 4 {
-			num >>= 4
-		}
 		if len(nsrc) > 3 {
+			num >>= 4
 			dst[2] = byte(num & 0xFF)
 			num >>= 8
 			count++
@@ -414,7 +426,7 @@ func Decode(dst, src []byte) ([]byte, error) {
 			return odst[:count], InvalidTotalError(num)
 		}
 
-		if len(nsrc) > 9 { // ??
+		if len(nsrc) > 9 {
 			dst[6] = byte(num & 0xFF)
 			num >>= 8
 			count++

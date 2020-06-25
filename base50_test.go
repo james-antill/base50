@@ -2,53 +2,70 @@ package base50
 
 import (
 	"bytes"
+	"encoding/hex"
 	"testing"
 )
 
 func TestBase50AllOneByte(t *testing.T) {
 	for i := 0; i < 256; i++ {
-		ob := []byte{byte(i)}
 
-		if EncodeLen(len(ob)) != 3 {
-			t.Errorf("bad EncodeLen: len=%d\n",
-				EncodeLen(len(ob)))
-		}
+		for o := 0; o < 21; o++ {
+			ob := []byte{byte(i), byte(i), byte(i), byte(i),
+				byte(i), byte(i), byte(i)}
+			if o > 13 {
+				ob[0] = 0x00
+				ob[1] = 0x00
+				ob[2] = 0x00
+				ob[3] = 0x00
+				ob[4] = 0x00
+				ob[5] = 0x00
+			} else if o > 6 {
+				ob[0] = 0xFF
+				ob[1] = 0xFF
+				ob[2] = 0xFF
+				ob[3] = 0xFF
+				ob[4] = 0xFF
+				ob[5] = 0xFF
+			}
+			ob = ob[o%7:]
 
-		var encodedStore [3]byte
-		encoded := encodedStore[:]
+			var encodedStore [10]byte
+			encoded := encodedStore[:]
+			encoded = Encode(encoded, ob)
+			if len(ob) != 7 {
+				if encoded[len(encoded)-1] != '.' {
+					t.Errorf("no stop character: %#x made %v (len=%d)\n",
+						i, encoded, len(encoded))
+				}
+				encoded = encoded[:len(encoded)-1]
+			}
+			if len(encoded) > EncodeLen(len(ob)) {
+				t.Errorf("bad len: %#x made %v (len=%d)\n",
+					i, encoded, len(encoded))
+			}
 
-		encoded = Encode(encoded, ob)
-		if encoded[len(encoded)-1] != '.' {
-			t.Errorf("no stop character: %#x made %v (len=%d)\n",
-				i, encoded, len(encoded))
-		}
-		encoded = encoded[:len(encoded)-1]
-		if len(encoded) != 1 && len(encoded) != 2 {
-			t.Errorf("bad len: %#x made %v (len=%d)\n",
-				i, encoded, len(encoded))
-		}
+			if DecodeLen(len(encoded)) != len(ob) {
+				t.Errorf("bad DecodeLen: len=%d\n",
+					DecodeLen(len(encoded)))
+			}
 
-		if DecodeLen(len(encoded)) != 1 {
-			t.Errorf("bad DecodeLen: len=%d\n",
-				DecodeLen(len(encoded)))
-		}
+			var decodedStore [7]byte
+			decoded := decodedStore[:]
 
-		var decodedStore [1]byte
-		decoded := decodedStore[:]
+			decoded, err := Decode(decoded, encoded)
+			if err != nil {
+				t.Errorf("bad err: %#x made %v\n",
+					i, err)
+			}
+			if len(decoded) != len(ob) {
+				t.Errorf("bad len: %#x (%v) made %v which decoded to (len=%d)\n",
+					i, ob, decoded, len(decoded))
+			}
 
-		decoded, err := Decode(decoded, encoded)
-		if err != nil {
-			t.Errorf("bad err: %#x made %v\n",
-				i, err)
-		}
-		if len(decoded) != 1 {
-			t.Errorf("bad len: %#x made %v which decoded to (len=%d)\n",
-				i, decoded, len(decoded))
-		}
-
-		if !bytes.Equal(ob, decoded) {
-			t.Errorf("data not equal: in=%v: ut=%v\n",
-				ob, decoded)
+			if !bytes.Equal(ob, decoded) {
+				t.Errorf("data not equal: in=%v: ut=%v\n",
+					ob, decoded)
+			}
 		}
 	}
 }
@@ -60,48 +77,62 @@ func TestBase50AllTwoByte(t *testing.T) {
 
 	for i := 0; i < 256; i++ {
 		for j := 0; j < 256; j++ {
-			ob := []byte{byte(i), byte(j)}
+			for o := 0; o < 18; o++ {
+				ob := []byte{byte(j), byte(j), byte(j), byte(j),
+					byte(j), byte(i), byte(j)}
+				if o > 13 {
+					ob[0] = 0x00
+					ob[1] = 0x00
+					ob[2] = 0x00
+					ob[3] = 0x00
+					ob[4] = 0x00
+				} else if o > 6 {
+					ob[0] = 0xFF
+					ob[1] = 0xFF
+					ob[2] = 0xFF
+					ob[3] = 0xFF
+					ob[4] = 0xFF
+				}
+				ob = ob[o%6:]
 
-			if EncodeLen(len(ob)) != 4 {
-				t.Errorf("bad EncodeLen: len=%d\n",
-					EncodeLen(len(ob)))
-			}
+				var encodedStore [10]byte
+				encoded := encodedStore[:]
 
-			var encodedStore [4]byte
-			encoded := encodedStore[:]
+				encoded = Encode(encoded, ob)
+				if len(ob) != 7 {
+					if encoded[len(encoded)-1] != '.' {
+						t.Errorf("no stop character: %#x made %v (len=%d)\n",
+							i, encoded, len(encoded))
+					}
+					encoded = encoded[:len(encoded)-1]
+				}
+				if len(encoded) > EncodeLen(len(ob)) {
+					t.Errorf("bad len: %#x made %v (len=%d)\n",
+						i, encoded, len(encoded))
+				}
 
-			encoded = Encode(encoded, ob)
-			if encoded[len(encoded)-1] != '.' {
-				t.Errorf("no stop character: %#x%x made %v (len=%d)\n",
-					i, j, encoded, len(encoded))
-			}
-			encoded = encoded[:len(encoded)-1]
-			if len(encoded) != 3 {
-				t.Errorf("bad len: %#x%x made %v (len=%d)\n",
-					i, j, encoded, len(encoded))
-			}
+				if DecodeLen(len(encoded)) != len(ob) {
+					t.Errorf("bad DecodeLen: len=%d\n",
+						DecodeLen(len(encoded)))
+				}
 
-			if DecodeLen(len(encoded)) != 2 {
-				t.Errorf("bad DecodeLen: len=%d\n",
-					DecodeLen(len(encoded)))
-			}
+				var decodedStore [7]byte
+				decoded := decodedStore[:]
 
-			var decodedStore [2]byte
-			decoded := decodedStore[:]
+				decoded, err := Decode(decoded, encoded)
+				if err != nil {
+					t.Errorf("bad err: %#x%x made %v\n",
+						i, j, err)
+				}
+				if len(decoded) != len(ob) {
+					t.Errorf("bad len: %#x (%v) made %v which decoded to (len=%d)\n",
+						i, ob, decoded, len(decoded))
+				}
 
-			decoded, err := Decode(decoded, encoded)
-			if err != nil {
-				t.Errorf("bad err: %#x%x made %v\n",
-					i, j, err)
-			}
-			if len(decoded) != 2 {
-				t.Errorf("bad len: %#x%x made %v which decoded to (len=%d)\n",
-					i, j, decoded, len(decoded))
-			}
-
-			if !bytes.Equal(ob, decoded) {
-				t.Errorf("data not equal: in=%v: ut=%v\n",
-					ob, decoded)
+				if !bytes.Equal(ob, decoded) {
+					t.Errorf("data not equal: in=%v: ut=%v\n",
+						ob, decoded)
+				}
 			}
 		}
 	}
@@ -247,8 +278,8 @@ func testDataPrefixRev(t *testing.T, data []tEncData, prefix, encPrefix string) 
 		val := encPrefix + data[i].enc
 
 		if decLen > DecodeLen(len(val)) {
-			t.Errorf("bad DecodeLen: %d: %v len=%d\n",
-				i, val, EncodeLen(len(val)))
+			t.Errorf("bad DecodeLen: %d: %v %d > len=%d\n",
+				i, val, decLen, DecodeLen(len(val)))
 		}
 
 		decoded := make([]byte, DecodeLen(len(val)))
@@ -260,7 +291,7 @@ func testDataPrefixRev(t *testing.T, data []tEncData, prefix, encPrefix string) 
 
 		if string(dec) != string(decoded) {
 			t.Errorf("data not equal: %v: %v\n tst=<%s>\n got <%s>\n",
-				i, val, dec, string(decoded))
+				i, val, hex.EncodeToString(dec), hex.EncodeToString(decoded))
 		}
 	}
 }
@@ -276,7 +307,7 @@ func TestBase50EncAbcdefg(t *testing.T) {
 		{[]byte("ab"), 4, false, "9yb."},
 		{[]byte("abc"), 6, false, "KKuxH."},
 		{[]byte("abcd"), 7, false, "KKuxP4."},
-		{[]byte("abcde"), 9, false, "KKuxP0SW."},
+		{[]byte("abcde"), 9, false, "KKuxPSW."},
 		{[]byte("abcdef"), 10, false, "KKuxP2JF2."},
 		{[]byte("abcdefg"), 10, false, "KKuxPEp1gJ"},
 	}
@@ -291,6 +322,7 @@ func TestBase50DecAbcdefg(t *testing.T) {
 		{[]byte("abc"), 3, false, "KKuxH."},
 		{[]byte("abcd"), 4, false, "KKuxP4."},
 		{[]byte("abcde"), 5, false, "KKuxP0SW."},
+		{[]byte("abcde"), 5, false, "KKuxPSW."},
 		{[]byte("abcdef"), 6, false, "KKuxP2JF2."},
 		{[]byte("abcdefg"), 7, false, "KKuxPEp1gJ"},
 	}
@@ -337,7 +369,7 @@ func TestBase50Declen(t *testing.T) {
 	}
 }
 
-func TestBase50Edgecases(t *testing.T) {
+func TestBase50EncEdgecases(t *testing.T) {
 	if len(Alphabet) != 50 {
 		t.Errorf("Alphabet-len: %d\n",
 			len(Alphabet))
@@ -349,11 +381,11 @@ func TestBase50Edgecases(t *testing.T) {
 		{[]byte{0, 0},
 			4, false, "000."},
 		{[]byte{0, 0, 0},
-			6, false, "00000."},
+			6, false, "0000."},
 		{[]byte{0, 0, 0, 0},
 			7, false, "000000."},
 		{[]byte{0, 0, 0, 0, 0},
-			9, false, "00000000."},
+			9, false, "0000000."},
 		{[]byte{0, 0, 0, 0, 0, 0},
 			10, false, "000000000."},
 		{[]byte{0, 0, 0, 0, 0, 0, 0},
@@ -364,11 +396,11 @@ func TestBase50Edgecases(t *testing.T) {
 		{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0},
 			10 + 4, false, "0000000000000."},
 		{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			10 + 6, false, "000000000000000."},
+			10 + 6, false, "00000000000000."},
 		{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 			10 + 7, false, "0000000000000000."},
 		{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-			10 + 9, false, "000000000000000000."},
+			10 + 9, false, "00000000000000000."},
 		{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 			10 + 10, false, "0000000000000000000."},
 		{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -380,6 +412,40 @@ func TestBase50Edgecases(t *testing.T) {
 			4, false, "XAh."},
 		{[]byte{0xFF, 0xFF, 0xFF},
 			6, false, "rxU8p."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0x00},
+			7, false, "rxU8p0."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0x10},
+			7, false, "rxU8q0."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF0},
+			7, false, "rxU950."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF1},
+			7, false, "rxU951."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF2},
+			7, false, "rxU952."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF3},
+			7, false, "rxU953."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF4},
+			7, false, "rxU954."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF5},
+			7, false, "rxU955."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF6},
+			7, false, "rxU956."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF7},
+			7, false, "rxU957."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF8},
+			7, false, "rxU958."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF9},
+			7, false, "rxU959."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFA},
+			7, false, "rxU95A."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFB},
+			7, false, "rxU95E."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFC},
+			7, false, "rxU95F."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFD},
+			7, false, "rxU95G."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFE},
+			7, false, "rxU95H."},
 		{[]byte{0xFF, 0xFF, 0xFF, 0xFF},
 			7, false, "rxU95J."},
 		{[]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
@@ -389,11 +455,74 @@ func TestBase50Edgecases(t *testing.T) {
 		{[]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
 			10, false, "rxU95rxU95"},
 
+		{[]byte{1},
+			3, false, "1."},
+		{[]byte{0, 1},
+			4, false, "001."},
+		{[]byte{0, 0, 1},
+			6, false, "000K."},
+		{[]byte{0, 0, 0, 1},
+			7, false, "000001."},
+		{[]byte{0, 0, 0, 0, 1},
+			9, false, "0000001."},
+		{[]byte{0, 0, 0, 0, 0, 1},
+			10, false, "000000001."},
+		{[]byte{0, 0, 0, 0, 0, 0, 1},
+			10, false, "0000000001"},
+
 		// We want to test 50 rollover
 		{[]byte{48}, 3, false, "y."},
 		{[]byte{49}, 3, false, "z."},
 		{[]byte{50}, 3, false, "10."},
 		{[]byte{51}, 3, false, "11."},
+
+		// Opts
+		{[]byte{49},
+			3, false, "z."},
+		{[]byte{50},
+			3, false, "10."},
+
+		// 6250000
+		{[]byte{0x05, 0xF5, 0xE0},
+			6, false, "zzzg."},
+		{[]byte{0x05, 0xF5, 0xE1},
+			6, false, "10000."},
+		{[]byte{0x05, 0xF5, 0xE2},
+			6, false, "1000K."},
+
+		// 2500
+		{[]byte{0x00, 0x00, 0x00, 0x09, 0xC3},
+			9, false, "00000zz."},
+		{[]byte{0x00, 0x00, 0x00, 0x09, 0xC4},
+			9, false, "00000100."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF9, 0xC3},
+			9, false, "rxU95zz."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF9, 0xC4},
+			9, false, "rxU95100."},
 	}
 	testData(t, data)
+}
+
+func TestBase50DecEdgecases(t *testing.T) {
+	data := []tEncData{
+		{[]byte{49}, 1, false, "z."},
+		{[]byte{0xc3}, 1, false, "zz."},
+		{[]byte{0xe8, 0x47}, 2, false, "zzz."},
+		{[]byte{0x05, 0xf5, 0xe0}, 3, false, "zzzg."},
+		{[]byte{0x05, 0xf5, 0xe1}, 3, false, "10000."},
+		{[]byte{0x05, 0xf5, 0xe2}, 3, false, "1000K."},
+		{[]byte{0xFF, 0xFF, 0xFF}, 3, false, "rxU8p."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF0}, 5, false, "rxU950."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF1}, 5, false, "rxU951."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF2}, 5, false, "rxU952."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF3}, 5, false, "rxU953."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFF}, 5, false, "rxU95J."},
+		{[]byte{0xFF, 0xFF, 0xFF, 0xFF}, 5, false, "rxU95J."},
+		{[]byte{0x00, 0x00, 0x00, 0x09, 0xC3}, 5, false, "00000zz."},
+		{[]byte{0x00, 0x00, 0x00, 0x09, 0xC4}, 5, false, "00000100."},
+		// This is confusing, not produced by encoding... Should be illegal.
+		{[]byte{0xFF, 0xFF, 0xFF, 0xF9, 0xC3}, 5, false, "rxU95zz."},
+	}
+
+	testDataRev(t, data)
 }
