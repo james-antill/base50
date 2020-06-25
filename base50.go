@@ -31,18 +31,21 @@ const Alphabet = "0123456789" +
 const configOpt = true
 const panicDebug = true
 
-// See the documentation on Encode(). Roughly 3.5 bin bytes fits into 5 ASCII
+// See the documentation on Encode(). Roughly 7 binary bytes fits into 10 ASCII
 // bytes in base49 onwards.
-func encodeInt(dst []byte, num uint32, outb int) {
-	if panicDebug && num > 0xFFFFFFF {
+func encodeInt64(dst []byte, num uint64, outb int) {
+	// 0xFFFFFFFFFFFFFF = 0xFFFF_FFFF_FFFF_FF
+	if panicDebug && num > 0xFFFFFFFFFFFFFF {
 		panic(num)
 	}
 	if panicDebug && outb < 1 {
 		panic(outb)
 	}
-	if panicDebug && outb > 5 {
+	if panicDebug && outb > 10 {
 		panic(outb)
 	}
+
+	//	fmt.Printf("JDBG: enc: %d %#x\n", outb, num)
 
 	for i := outb - 1; i >= 0; i-- {
 		dst[i] = Alphabet[num%50]
@@ -54,103 +57,66 @@ func encodeInt(dst []byte, num uint32, outb int) {
 	}
 }
 
-func encodeBytes1(dst, src []byte, outb int, opt uint32) int {
-	num := uint32(src[0])
-	if outb > 2 {
+// See doc. on Encode(), we encode the (upto) 7 binary bytes into a uint64
+// then we'll turn that into 10 ASCII bytes.
+func encodeBytes(dst, src []byte, outb int, opt uint64) int {
+	num := uint64(src[0]) // 1 or 2 byte output
+	if outb >= 3 {
 		num <<= 8
-		num += uint32(src[1])
+		num += uint64(src[1])
 	}
-	if outb > 3 {
+	if outb >= 4 {
 		num <<= 8
-		num += uint32(src[2])
+		num += uint64(src[2])
 	}
-	if outb > 4 {
-		num <<= 4
-		num += ((uint32(src[3]&0xF0) >> 4) & 0x0F)
+	if outb >= 6 {
+		num <<= 8
+		num += uint64(src[3])
+	}
+	if outb >= 7 {
+		num <<= 8
+		num += uint64(src[4])
+	}
+	if outb >= 9 {
+		num <<= 8
+		num += uint64(src[5])
+	}
+	if outb >= 10 {
+		num <<= 8
+		num += uint64(src[6])
 	}
 	if configOpt && opt > num {
 		outb--
 	}
-	encodeInt(dst, num, outb)
+	encodeInt64(dst, num, outb)
 
 	return outb
 }
 
-func encodeBytes1Suffix(dst, src []byte) (int, []byte) {
+// For the last group of bytes (< 7) we can output less than 10 ASCII bytes
+func encodeBytesSuffix(dst, src []byte) int {
 	switch len(src) {
 	case 1:
 		// 50**1. Optimze, Eg. 0 = 0
-		return encodeBytes1(dst, src, 2, 50), src[1:]
+		return encodeBytes(dst, src, 2, 50)
 	case 2:
-		encodeBytes1(dst, src, 3, 0)
-		return 3, src[2:]
+		encodeBytes(dst, src, 3, 0)
+		return 3
 	case 3:
-		// When 3 bytes are the suffix, we need to access [3]
-		var t [4]byte
-		nsrc := t[:]
-		copy(nsrc, src)
-
 		// 50**4=6250000
-		return encodeBytes1(dst, nsrc, 5, 6250000), src[3:]
+		return encodeBytes(dst, src, 5, 6250000)
+	case 4:
+		return encodeBytes(dst, src, 6, 0)
+	case 5:
+		// 50**7=781250000000
+		return encodeBytes(dst, src, 8, 781250000000)
+	case 6:
+		return encodeBytes(dst, src, 9, 0)
 	default:
-		// If we have >= 4 bytes, we know that by what is after this.
-		// So just 5 == 3 bytes, 6 == 4 bytes, etc.
-		encodeBytes1(dst, src, 5, 0)
-		return 5, src[3:]
+		break
 	}
-}
 
-func encodeBytes2(dst, src []byte, outb int, opt uint32) int {
-	var num uint32
-	num = uint32(src[0]) & 0x0F
-	if outb > 1 {
-		num <<= 8
-		num += uint32(src[1])
-	}
-	if outb > 3 {
-		num <<= 8
-		num += uint32(src[2])
-	}
-	if outb > 4 {
-		num <<= 8
-		num += uint32(src[3])
-	}
-	if configOpt && opt > num {
-		outb--
-	}
-	encodeInt(dst, num, outb)
-	return outb
-}
-
-func encodeBytes2Suffix(dst, src []byte) int {
-	switch len(src) {
-	case 0:
-		return 0
-	case 1:
-		// This is the "fourth" byte, which means it's just the lower 0.5
-		// or 2**4. We have to output it or we can't tell between no byte
-		// and zero.
-		encodeBytes2(dst, src, 1, 0)
-		return 1
-	case 2:
-		// So this is actually 1.5 bytes,
-		// or 2**12=4096
-		//  50**2=  2500
-		//  50**3=125000
-		return encodeBytes2(dst, src, 3, 2500)
-	case 3:
-		// 2**20=1048576
-		// 50**4=6250000
-		// Note we can't make this 3 output bytes, or we wouldn't know if the
-		// output should be 5 or 6 bytes.
-		encodeBytes2(dst, src, 4, 0)
-		return 4
-	default:
-		// 2**28
-		// Dito. have to encode to 5 bytes so we know we encoded 7 bytes.
-		encodeBytes2(dst, src, 5, 0)
-		return 5
-	}
+	return encodeBytes(dst, src, 10, 0)
 }
 
 // EncodeLen for every 3.5 bytes of input we have 5 bytes output and
@@ -193,8 +159,6 @@ func EncodeLen(x int) int {
 //          zzz               =            124999
 //  3   = 0xFFFF_FF           =          16777215
 //          zzzz_z            =         312499999
-// 3.5* = 0xFFFF_FFF          =         268435455
-//          zzzz_z            =         312499999
 //  4   = 0xFFFF_FFFF         =        4294967295
 //          zzzz_zz           =       15624999999
 //  5   = 0xFFFF_FFFF_FF      =     1099511627775
@@ -210,21 +174,16 @@ func EncodeLen(x int) int {
 func Encode(dst, src []byte) []byte {
 	idx := 0
 
-	// Get 2x 3.5 bytes at once, just to make life easier...
+	// Get 7 bytes at once, just to make life easier...
 	for len(src) >= 7 {
-		_ = encodeBytes1(dst[idx:], src, 5, 0)
-		src = src[3:]
-		idx += 5
-		_ = encodeBytes2(dst[idx:], src, 5, 0)
-		src = src[4:]
-		idx += 5
+		_ = encodeBytes(dst[idx:], src, 10, 0)
+		src = src[7:]
+		idx += 10
 	}
 
 	if len(src) > 0 {
-		i, ns := encodeBytes1Suffix(dst[idx:], src)
+		i := encodeBytesSuffix(dst[idx:], src)
 		idx += i
-		src = ns
-		idx += encodeBytes2Suffix(dst[idx:], src)
 		dst[idx] = '.'
 		idx++
 	}
@@ -245,42 +204,42 @@ func EncodeToString(src []byte) string {
 
 // from50Char converts a base50 character into its value and a success flag.
 // in theory we could index the alphabet, but this should be faster...
-func from50Char(c byte) (uint32, bool) {
+func from50Char(c byte) (uint64, bool) {
 	if configIndexAlphabet {
 		idx := strings.IndexByte(Alphabet, c)
 		if idx == -1 {
-			return uint32(c), false
+			return uint64(c), false
 		}
-		return uint32(idx), true
+		return uint64(idx), true
 	}
 
 	switch {
 	case '0' <= c && c <= '9':
-		return uint32(c - '0'), true
+		return uint64(c - '0'), true
 	case 'A' == c:
-		return uint32(c-'A') + 10, true
+		return uint64(c-'A') + 10, true
 	case 'E' <= c && c <= 'H':
-		return uint32(c-'E') + 10 + 1, true
+		return uint64(c-'E') + 10 + 1, true
 	case 'J' <= c && c <= 'N':
-		return uint32(c-'J') + 10 + 1 + 4, true
+		return uint64(c-'J') + 10 + 1 + 4, true
 	case 'P' == c:
-		return uint32(c-'P') + 10 + 1 + 4 + 5, true
+		return uint64(c-'P') + 10 + 1 + 4 + 5, true
 	case 'R' <= c && c <= 'U':
-		return uint32(c-'R') + 10 + 1 + 4 + 5 + 1, true
+		return uint64(c-'R') + 10 + 1 + 4 + 5 + 1, true
 	case 'W' <= c && c <= 'Z':
-		return uint32(c-'W') + 10 + 1 + 4 + 5 + 1 + 4, true
+		return uint64(c-'W') + 10 + 1 + 4 + 5 + 1 + 4, true
 	case 'a' <= c && c <= 'b':
-		return uint32(c-'a') + 10 + 1 + 4 + 5 + 1 + 4 + 4, true
+		return uint64(c-'a') + 10 + 1 + 4 + 5 + 1 + 4 + 4, true
 	case 'd' <= c && c <= 'h':
-		return uint32(c-'d') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2, true
+		return uint64(c-'d') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2, true
 	case 'j' <= c && c <= 'k':
-		return uint32(c-'j') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5, true
+		return uint64(c-'j') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5, true
 	case 'm' <= c && c <= 'n':
-		return uint32(c-'m') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5 + 2, true
+		return uint64(c-'m') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5 + 2, true
 	case 'p' <= c && c <= 'u':
-		return uint32(c-'p') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5 + 2 + 2, true
+		return uint64(c-'p') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5 + 2 + 2, true
 	case 'w' <= c && c <= 'z':
-		return uint32(c-'w') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5 + 2 + 2 + 6, true
+		return uint64(c-'w') + 10 + 1 + 4 + 5 + 1 + 4 + 4 + 2 + 5 + 2 + 2 + 6, true
 	}
 
 	return 0, false
@@ -308,14 +267,21 @@ func (e InvalidByteError) Error() string {
 	return fmt.Sprintf("base50: invalid byte: %#U", rune(e))
 }
 
-// InvalidTotalError values describe errors resulting from an invalid series of bytes in a base50 string.
-type InvalidTotalError uint32
+// InvalidTotalError values describe errors resulting from an invalid series of
+// bytes in a base50 string (the value is greater than 16**14).
+type InvalidTotalError uint64
 
 func (e InvalidTotalError) Error() string {
-	return fmt.Sprintf("base50: invalid total > 0xFFFF_FFF: %x", int32(e))
+	num := uint64(e)
+	if num > 0xFFFF_FFFF_FFFF_FF {
+		return fmt.Sprintf("base50: invalid num > 0xFFFF_FFFF_FFFF_FF: %x", num)
+	}
+	return fmt.Sprintf("base50: invalid encoding (Eg. 56 should be 056): %x",
+		num)
 }
 
-// DecodeLen for every 5 bytes of input we have 3.5 bytes output
+// DecodeLen for every 10 bytes of input we have 7 bytes output, apart from
+// the last group.
 func DecodeLen(x int) int {
 	// return ((x+1) * 10) / 7
 
@@ -356,13 +322,17 @@ func DecodeLen(x int) int {
 // Decode decodes src into DecodedLen(len(src)) bytes, returning the actual
 // number of bytes written to dst.
 //
-// Decode expects that src contains only base50 characters and that src has even length. If the input is malformed, Decode returns the number of bytes decoded before the error.
+// Decode expects that src contains only base50 characters, or whitespace/underbar
+// or the stop character if you've concatenated multiple encodings together.
+// Decode also expects that src has a correct encoding (Eg. 56 is not valid).
+// If the input is malformed, Decode returns the number of bytes decoded before
+// the error.
 func Decode(dst, src []byte) ([]byte, error) {
 	count := 0
 	odst := dst
 
 	for len(src) > 0 {
-		var v [10]uint32
+		var v [10]uint64
 		var ok [10]bool
 
 		var Tbuf [10]byte
@@ -387,63 +357,59 @@ func Decode(dst, src []byte) ([]byte, error) {
 			i++
 		}
 
-		var num uint32
+		var num uint64
 
-		for i := 0; i < len(nsrc) && i < 5; i++ {
+		for i := 0; i < len(nsrc) && i < 10; i++ {
 			num *= 50
 			num += v[i]
 		}
-		if num > 0xFFFFFFF {
+		if num > 0xFFFFFFFFFFFFFF {
 			return odst[:count], InvalidTotalError(num)
 		}
+		enum := num // Save the original num, for errors.
+
+		//		fmt.Printf("JDBG: dec: %d %#x\n", len(nsrc), num)
 
 		// See the table on Encode()
-		if len(nsrc) > 5 {
-			dst[3] = byte(num & 0xF)
-			dst[3] <<= 4 // It's the high 4 bits, stored in the low 4 bits of num.
-			count++
-		}
-		if len(nsrc) > 3 {
-			num >>= 4
-			dst[2] = byte(num & 0xFF)
-			num >>= 8
-			count++
-		}
-		if len(nsrc) > 2 {
-			dst[1] = byte(num & 0xFF)
-			num >>= 8
-			count++
-		}
-		dst[0] = byte(num)
-		count++
-
-		num = 0
-		for i := 5; i < len(nsrc) && i < 10; i++ {
-			num *= 50
-			num += v[i]
-		}
-		if num > 0xFFFFFFF {
-			return odst[:count], InvalidTotalError(num)
-		}
-
-		if len(nsrc) > 9 {
+		if len(nsrc) >= 10 {
 			dst[6] = byte(num & 0xFF)
 			num >>= 8
 			count++
 		}
-		if len(nsrc) > 8 {
+		if len(nsrc) >= 9 {
 			dst[5] = byte(num & 0xFF)
 			num >>= 8
 			count++
 		}
-		if len(nsrc) > 6 {
+		if len(nsrc) >= 7 {
 			dst[4] = byte(num & 0xFF)
 			num >>= 8
 			count++
 		}
-		if len(nsrc) > 5 {
-			// The low four bits from above, which were the high 4 bits in num.
-			dst[3] += byte(num)
+		if len(nsrc) >= 6 {
+			dst[3] = byte(num & 0xFF)
+			num >>= 8
+			count++
+		}
+		if len(nsrc) >= 4 {
+			dst[2] = byte(num & 0xFF)
+			num >>= 8
+			count++
+		}
+		if len(nsrc) >= 3 {
+			dst[1] = byte(num & 0xFF)
+			num >>= 8
+			count++
+		}
+		dst[0] = byte(num & 0xFF)
+		num >>= 8
+		count++
+
+		if panicDebug && len(nsrc) >= 10 && num > 0 {
+			panic(num)
+		}
+		if num > 0 {
+			return odst[:count], InvalidTotalError(enum)
 		}
 
 		dst = odst[count:]
