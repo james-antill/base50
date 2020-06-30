@@ -417,3 +417,17 @@ func Decode(dst, src []byte) ([]byte, error) {
 
 	return odst[:count], nil
 }
+
+// DecodeString returns the bytes represented by the base50 string s.
+//
+// DecodeString expects that src contains only base50 characters, or whitespace/underbar
+// or the stop character if you've concatenated multiple encodings together.
+// Decode also expects that src has a correct encoding (Eg. 56 is not valid).
+// If the input is malformed, DecodeString returns the number of bytes decoded before
+// the error.
+func DecodeString(s string) ([]byte, error) {
+	src := []byte(s)
+	// We can use the source slice itself as the destination
+	// because we read the "number" first and then write. And src always >.
+	return Decode(src, src)
+}
