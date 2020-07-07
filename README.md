@@ -1,6 +1,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/james-antill/base50?style=flat-square)](https://goreportcard.com/report/github.com/james-antill/base50)
 [![Go Doc](https://img.shields.io/badge/godoc-reference-blue.svg?style=flat-square)](http://godoc.org/github.com/james-antill/base50)
 [![Release](https://img.shields.io/github/release/james-antill/base50.svg?style=flat-square)](https://github.com/james-antill/base50/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 base50
 ======
